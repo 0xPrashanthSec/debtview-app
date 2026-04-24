@@ -25,6 +25,88 @@ const uid    = () => Math.random().toString(36).slice(2,9);
 const moStr  = m => m <= 0 ? "Done!" : m < 12 ? `${m}mo` : `${Math.floor(m/12)}y ${m%12}mo`;
 const emptyL = () => ({ id:uid(), name:"", type:"Personal Loan", originalAmount:"", outstanding:"", interestRate:"", emi:"", monthsLeft:"", notes:"", active:true });
 
+function buildLoanSchedule(loan) {
+  const outstanding = Math.max(0, Number(loan.outstanding) || 0);
+  const emi = Math.max(0, Number(loan.emi) || 0);
+  const monthsLeft = Math.max(0, Number(loan.monthsLeft) || 0);
+  const monthlyRate = Math.max(0, Number(loan.interestRate) || 0) / 12 / 100;
+
+  if (outstanding <= 0 || emi <= 0 || monthsLeft <= 0) {
+    return { schedule: [], summary: null, warnings: [] };
+  }
+
+  const warnings = [];
+  const firstMonthInterest = outstanding * monthlyRate;
+  if (monthlyRate > 0 && emi <= firstMonthInterest) {
+    warnings.push("EMI is too low to reduce principal at the current interest rate.");
+  }
+
+  let balance = outstanding;
+  let cursor = new Date();
+  let totalPrincipal = 0;
+  let totalInterest = 0;
+  const schedule = [];
+
+  for (let index = 0; index < monthsLeft && balance > 0; index += 1) {
+    const rawInterest = balance * monthlyRate;
+    const interest = Math.min(balance, Number(rawInterest.toFixed(2)));
+    let payment = emi;
+
+    if (monthlyRate > 0 && payment <= interest) {
+      payment = interest;
+    }
+
+    payment = Math.min(payment, Number((balance + interest).toFixed(2)));
+    const principal = Math.min(balance, Number((payment - interest).toFixed(2)));
+    balance = Math.max(0, Number((balance - principal).toFixed(2)));
+
+    totalPrincipal += principal;
+    totalInterest += interest;
+
+    schedule.push({
+      index,
+      year: cursor.getFullYear(),
+      month: cursor.toLocaleString("en-IN", { month: "short" }),
+      monthLabel: cursor.toLocaleString("en-IN", { month: "short", year: "numeric" }),
+      emi: payment,
+      principal,
+      interest,
+      balance,
+    });
+
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  return {
+    schedule,
+    warnings,
+    summary: {
+      totalPrincipal: Number(totalPrincipal.toFixed(2)),
+      totalInterest: Number(totalInterest.toFixed(2)),
+      totalPaid: Number((totalPrincipal + totalInterest).toFixed(2)),
+      endBalance: Number(balance.toFixed(2)),
+    },
+  };
+}
+
+function currentYearBreakdown(schedule) {
+  if (!schedule.length) return null;
+
+  const year = new Date().getFullYear();
+  const rows = schedule.filter(entry => entry.year === year);
+  const targetRows = rows.length ? rows : schedule;
+
+  return {
+    year: rows.length ? year : targetRows[0].year,
+    emi: Number(targetRows.reduce((sum, item) => sum + item.emi, 0).toFixed(2)),
+    principal: Number(targetRows.reduce((sum, item) => sum + item.principal, 0).toFixed(2)),
+    interest: Number(targetRows.reduce((sum, item) => sum + item.interest, 0).toFixed(2)),
+    balance: targetRows[targetRows.length - 1]?.balance ?? 0,
+    rows: targetRows,
+    isFallback: rows.length === 0,
+  };
+}
+
 function prioritise(loans, strategy) {
   const a = loans.filter(l => l.active && Number(l.outstanding) > 0);
   if (strategy === "avalanche") return [...a].sort((x,y) => Number(y.interestRate||0) - Number(x.interestRate||0));
@@ -227,6 +309,16 @@ export default function App() {
     subBtn: { background:C.navy, border:"none", color:"#e8d5b7", padding:"11px 26px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace", fontWeight:600 },
     canBtn: { background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"10px 22px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace" },
     ab:     c => ({ background:"transparent", border:`1px solid ${c}44`, color:c, padding:"4px 10px", borderRadius:4, cursor:"pointer", fontSize:10, fontFamily:"'DM Mono', monospace" }),
+    dc:     { marginTop:16, paddingTop:16, borderTop:`1px solid ${C.border}` },
+    dg:     { display:"grid", gridTemplateColumns:"repeat(4, minmax(0, 1fr))", gap:10, marginBottom:14 },
+    ds:     { background:"#faf8f5", border:`1px solid ${C.border}`, borderRadius:8, padding:"12px 14px" },
+    dsv:    { fontFamily:"'Playfair Display', serif", fontSize:20, color:C.navy, fontWeight:700, lineHeight:1.1 },
+    dsl:    { fontSize:10, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginTop:6, fontFamily:"'DM Mono', monospace" },
+    warn:   { marginBottom:14, padding:"10px 12px", borderRadius:8, background:"#fff3cd", color:"#8a5a00", border:"1px solid #f3d58a", fontSize:12, fontFamily:"'DM Mono', monospace" },
+    tableW: { overflowX:"auto", border:`1px solid ${C.border}`, borderRadius:8 },
+    table:  { width:"100%", borderCollapse:"collapse", background:"#fff" },
+    th:     { textAlign:"left", fontSize:10, letterSpacing:"0.1em", textTransform:"uppercase", color:C.muted, fontFamily:"'DM Mono', monospace", padding:"11px 12px", background:"#faf8f5", borderBottom:`1px solid ${C.border}` },
+    td:     { padding:"11px 12px", borderBottom:`1px solid ${C.border}`, fontSize:13, color:C.text, fontFamily:"'Crimson Pro', serif", whiteSpace:"nowrap" },
     empty:  { textAlign:"center", padding:"60px 20px", color:C.muted },
     toast:  { position:"fixed", bottom:24, right:24, background:C.navy, color:"#e8d5b7", padding:"11px 22px", borderRadius:6, fontSize:12, fontFamily:"'DM Mono', monospace", zIndex:999, boxShadow:"0 4px 20px #00000030", animation:"slideUp 0.25s ease" },
   };
@@ -237,6 +329,13 @@ export default function App() {
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Crimson+Pro:wght@400;500;600&family=DM+Mono:wght@400;500;600&display=swap');
         *{box-sizing:border-box} button:hover{opacity:0.88} input:focus,select:focus{border-color:#c8622a!important;outline:none}
         @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        @media (max-width: 900px){
+          .stats-grid{grid-template-columns:repeat(2,1fr)!important}
+          .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+        }
+        @media (max-width: 640px){
+          .stats-grid,.detail-grid,.form-grid{grid-template-columns:1fr!important}
+        }
       `}</style>
 
       <div style={S.header}>
@@ -268,7 +367,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div style={S.sg}>
+                <div className="stats-grid" style={S.sg}>
                   {[
                     { label:"Total Outstanding", value:fmtK(totalOut),   sub:`${active.length} active loans`, color:"#dc2626" },
                     { label:"Monthly Outgo",     value:fmtK(totalEMI),   sub:"combined EMIs",                 color:C.accent  },
@@ -358,6 +457,11 @@ export default function App() {
                 const pct   = loan.originalAmount > 0 ? Math.min(100, Math.round((1 - loan.outstanding/loan.originalAmount)*100)) : 0;
                 return (
                   <div key={loan.id} style={{ ...S.lc(color), opacity:loan.active?1:0.6 }}>
+                    {(() => {
+                      const details = buildLoanSchedule(loan);
+                      const yearView = currentYearBreakdown(details.schedule);
+                      return (
+                        <>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                       <div style={{ flex:1, cursor:"pointer" }} onClick={() => setExpandId(expandId===loan.id?null:loan.id)}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -376,7 +480,68 @@ export default function App() {
                         <div style={{ fontSize:10, color:C.muted, fontFamily:"'DM Mono', monospace", marginTop:5 }}>
                           {pct}% paid · {fmt(loan.originalAmount - loan.outstanding)} cleared of {fmt(loan.originalAmount)}
                         </div>
-                        {expandId===loan.id && loan.notes && <div style={{ marginTop:10, fontSize:13, color:C.muted, fontStyle:"italic", lineHeight:1.6 }}>{loan.notes}</div>}
+                        {expandId===loan.id && (
+                          <div style={S.dc}>
+                            {loan.notes && <div style={{ marginBottom:12, fontSize:13, color:C.muted, fontStyle:"italic", lineHeight:1.6 }}>{loan.notes}</div>}
+                            {details.warnings.map(warning => <div key={warning} style={S.warn}>{warning}</div>)}
+                            {yearView ? (
+                              <>
+                                <div style={{ fontFamily:"'Playfair Display', serif", fontSize:15, color:C.navy, marginBottom:12, fontWeight:600 }}>
+                                  {yearView.isFallback ? `Projected repayment snapshot (${yearView.year})` : `Projected ${yearView.year} repayment snapshot`}
+                                </div>
+                                <div className="detail-grid" style={S.dg}>
+                                  <div style={S.ds}>
+                                    <div style={S.dsv}>{fmt(yearView.emi)}</div>
+                                    <div style={S.dsl}>EMI This Year</div>
+                                  </div>
+                                  <div style={S.ds}>
+                                    <div style={S.dsv}>{fmt(yearView.principal)}</div>
+                                    <div style={S.dsl}>Principal This Year</div>
+                                  </div>
+                                  <div style={S.ds}>
+                                    <div style={S.dsv}>{fmt(yearView.interest)}</div>
+                                    <div style={S.dsl}>Interest This Year</div>
+                                  </div>
+                                  <div style={S.ds}>
+                                    <div style={S.dsv}>{fmt(yearView.balance)}</div>
+                                    <div style={S.dsl}>Balance Left</div>
+                                  </div>
+                                </div>
+                                <div style={{ fontFamily:"'Playfair Display', serif", fontSize:14, color:C.navy, marginBottom:10, fontWeight:600 }}>
+                                  Monthly repayment schedule
+                                </div>
+                                <div style={S.tableW}>
+                                  <table style={S.table}>
+                                    <thead>
+                                      <tr>
+                                        <th style={S.th}>Month</th>
+                                        <th style={S.th}>EMI</th>
+                                        <th style={S.th}>Principal</th>
+                                        <th style={S.th}>Interest</th>
+                                        <th style={S.th}>Balance</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {details.schedule.map((row, index) => (
+                                        <tr key={`${loan.id}-${row.monthLabel}-${index}`}>
+                                          <td style={S.td}>{row.monthLabel}</td>
+                                          <td style={S.td}>{fmt(row.emi)}</td>
+                                          <td style={S.td}>{fmt(row.principal)}</td>
+                                          <td style={S.td}>{fmt(row.interest)}</td>
+                                          <td style={{ ...S.td, borderBottom:index===details.schedule.length-1 ? "none" : S.td.borderBottom }}>{fmt(row.balance)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ fontSize:12, color:C.muted, fontFamily:"'DM Mono', monospace" }}>
+                                Add EMI, interest rate, and months remaining to see the monthly breakdown.
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display:"flex", gap:6, marginLeft:12, flexShrink:0, marginTop:2 }}>
                         {loan.active && <button style={S.ab("#16a34a")} onClick={() => markPaid(loan.id)}>✓ Cleared</button>}
@@ -384,6 +549,9 @@ export default function App() {
                         <button style={S.ab("#dc2626")} onClick={() => delLoan(loan.id)}>✕</button>
                       </div>
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               })
@@ -399,7 +567,7 @@ export default function App() {
               <input style={S.inp} value={form.name} placeholder="e.g. SBI Home Loan, HDFC Personal, Relative – Raju Bhai…"
                 onChange={e => setForm(f => ({ ...f, name:e.target.value }))}/>
             </div>
-            <div style={{ ...S.fg, marginBottom:14 }}>
+            <div className="form-grid" style={{ ...S.fg, marginBottom:14 }}>
               <div>
                 <label style={S.lbl}>Loan Type</label>
                 <select style={S.sel} value={form.type} onChange={e => setForm(f => ({ ...f, type:e.target.value }))}>
