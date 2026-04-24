@@ -8,7 +8,7 @@ A private, PIN-protected loan portfolio tracker. Hosted on GitHub Pages, data st
 
 ### Step 1 — Create a GitHub repo
 1. Go to https://github.com/new
-2. Name it exactly: `loan-tracker`
+2. Name it exactly: `debtview-app`
 3. Set it to **Public** (GitHub Pages requires this on free accounts)
 4. Click **Create repository**
 
@@ -25,7 +25,7 @@ cd loan-tracker
 git init
 git add .
 git commit -m "Initial deploy"
-git remote add origin https://github.com/YOUR_USERNAME/loan-tracker.git
+git remote add origin https://github.com/YOUR_USERNAME/debtview-app.git
 git push -u origin main
 ```
 
@@ -41,7 +41,7 @@ Check progress under the **Actions** tab in your repo.
 ### Step 5 — Open your app
 Your app will be live at:
 ```
-https://YOUR_USERNAME.github.io/loan-tracker/
+https://YOUR_USERNAME.github.io/debtview-app/
 ```
 
 ---
