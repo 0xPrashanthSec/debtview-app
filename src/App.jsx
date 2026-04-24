@@ -1,10 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
-// ─── Storage (localStorage) ───────────────────────────────────────────────────
 const LS_DATA = "debtview_loans_v1";
 const LS_PIN  = "debtview_pin_hash";
 
@@ -15,11 +11,10 @@ function savePinHash(h) { localStorage.setItem(LS_PIN, h); }
 function clearPinHash() { localStorage.removeItem(LS_PIN); }
 
 async function hashPin(pin) {
-  const buf  = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin + "debtview_salt"));
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pin + "debtview_salt"));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const TYPES = ["Home Loan","Personal Loan","Credit Card EMI","Informal / Family","Vehicle Loan","Education Loan","Other"];
 const TYPE_ICON  = { "Home Loan":"⌂","Personal Loan":"◈","Credit Card EMI":"▪","Informal / Family":"♡","Vehicle Loan":"◎","Education Loan":"◇","Other":"◉" };
 const TYPE_COLOR = { "Home Loan":"#4f9cf9","Personal Loan":"#f97316","Credit Card EMI":"#a855f7","Informal / Family":"#22c55e","Vehicle Loan":"#eab308","Education Loan":"#06b6d4","Other":"#94a3b8" };
@@ -42,7 +37,7 @@ function payoffProjection(loans) {
   const data = [];
   for (let m = 0; m <= Math.min(max, 60); m += m < 12 ? 1 : 3) {
     const total = loans.filter(l=>l.active).reduce((sum,l) => {
-      const ml = Number(l.monthsLeft)||0, out = Number(l.outstanding)||0, emi = Number(l.emi)||0;
+      const ml=Number(l.monthsLeft)||0, out=Number(l.outstanding)||0, emi=Number(l.emi)||0;
       return sum + (m >= ml ? 0 : Math.max(0, out - emi*m));
     }, 0);
     data.push({ month:m, label: m===0?"Now":`M${m}`, total:Math.round(total) });
@@ -50,32 +45,26 @@ function payoffProjection(loans) {
   return data;
 }
 
-// ─── PIN Screen ───────────────────────────────────────────────────────────────
 function PinScreen({ onUnlock }) {
-  const [mode, setMode]     = useState("check"); // check | setup | enter
-  const [pin, setPin]       = useState("");
+  const [mode, setMode]       = useState("check");
+  const [pin, setPin]         = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError]   = useState("");
-  const [shake, setShake]   = useState(false);
+  const [error, setError]     = useState("");
+  const [shake, setShake]     = useState(false);
 
-  useEffect(() => {
-    const stored = loadPinHash();
-    setMode(stored ? "enter" : "setup");
-  }, []);
+  useEffect(() => { setMode(loadPinHash() ? "enter" : "setup"); }, []);
 
   const doShake = () => { setShake(true); setTimeout(() => setShake(false), 500); };
 
   const handleSetup = async () => {
     if (pin.length < 4) { setError("PIN must be at least 4 digits"); return; }
     if (pin !== confirm) { setError("PINs don't match"); doShake(); setConfirm(""); return; }
-    const h = await hashPin(pin);
-    savePinHash(h);
+    savePinHash(await hashPin(pin));
     onUnlock();
   };
 
   const handleEnter = async () => {
-    const h = await hashPin(pin);
-    if (h === loadPinHash()) { onUnlock(); }
+    if ((await hashPin(pin)) === loadPinHash()) { onUnlock(); }
     else { setError("Wrong PIN"); doShake(); setPin(""); }
   };
 
@@ -84,11 +73,12 @@ function PinScreen({ onUnlock }) {
   return (
     <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Crimson Pro', serif" }}>
       <style>{`
-        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-        input:focus { border-color: #c8622a !important; outline: none; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Crimson+Pro:wght@400;500;600&family=DM+Mono:wght@400;500;600&display=swap');
+        @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        *{box-sizing:border-box} input:focus{border-color:#c8622a!important;outline:none}
       `}</style>
-      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"48px 40px", width:380, boxShadow:"0 8px 40px #00000012", animation:"fadeIn 0.4s ease", ...(shake ? {animation:"shake 0.4s ease"} : {}) }}>
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:"48px 40px", width:380, boxShadow:"0 8px 40px #00000012", animation: shake ? "shake 0.4s ease" : "fadeIn 0.4s ease" }}>
         <div style={{ textAlign:"center", marginBottom:36 }}>
           <div style={{ fontSize:32, marginBottom:12 }}>⌂</div>
           <div style={{ fontFamily:"'Playfair Display', serif", fontSize:26, fontWeight:700, color:C.navy }}>DebtView</div>
@@ -115,9 +105,7 @@ function PinScreen({ onUnlock }) {
             </div>
             {error && <div style={{ color:"#dc2626", fontSize:12, fontFamily:"'DM Mono', monospace", marginBottom:14, textAlign:"center" }}>{error}</div>}
             <button onClick={handleSetup} style={{ width:"100%", background:C.navy, border:"none", color:"#e8d5b7", padding:"13px", borderRadius:8, cursor:"pointer", fontSize:14, fontFamily:"'DM Mono', monospace", fontWeight:600, letterSpacing:"0.08em" }}>Set PIN & Enter</button>
-            <div style={{ marginTop:14, fontSize:11, color:C.muted, textAlign:"center", fontFamily:"'DM Mono', monospace", lineHeight:1.6 }}>
-              Your PIN is hashed and stored only in this browser.<br/>No data leaves your device.
-            </div>
+            <div style={{ marginTop:14, fontSize:11, color:C.muted, textAlign:"center", fontFamily:"'DM Mono', monospace", lineHeight:1.6 }}>PIN stored only in this browser. No data leaves your device.</div>
           </>
         )}
 
@@ -144,7 +132,6 @@ function PinScreen({ onUnlock }) {
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [loans, setLoans]       = useState([]);
@@ -155,6 +142,16 @@ export default function App() {
   const [toast, setToast]       = useState(null);
   const [expandId, setExpandId] = useState(null);
 
+  // ── ALL hooks MUST be before any early return ──────────────────────────
+  const active      = useMemo(() => loans.filter(l => l.active), [loans]);
+  const totalOut    = useMemo(() => active.reduce((s,l) => s + Number(l.outstanding||0), 0), [active]);
+  const totalEMI    = useMemo(() => active.reduce((s,l) => s + Number(l.emi||0), 0), [active]);
+  const totalOrig   = useMemo(() => active.reduce((s,l) => s + Number(l.originalAmount||l.outstanding||0), 0), [active]);
+  const pctPaid     = useMemo(() => totalOrig > 0 ? Math.min(100, Math.round((1 - totalOut/totalOrig)*100)) : 0, [totalOut, totalOrig]);
+  const longestMo   = useMemo(() => Math.max(...active.map(l => Number(l.monthsLeft)||0), 0), [active]);
+  const prioritised = useMemo(() => prioritise(loans, strategy), [loans, strategy]);
+  const projData    = useMemo(() => payoffProjection(loans), [loans]);
+
   useEffect(() => {
     if (!unlocked) return;
     const d = loadData();
@@ -162,30 +159,26 @@ export default function App() {
     if (d?.strategy) setStrategy(d.strategy);
   }, [unlocked]);
 
-  useEffect(() => {
-    if (unlocked) saveData({ loans, strategy });
-  }, [loans, strategy, unlocked]);
+  useEffect(() => { if (unlocked) saveData({ loans, strategy }); }, [loans, strategy, unlocked]);
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
+  // ── Early return AFTER all hooks ───────────────────────────────────────
   if (!unlocked) return <PinScreen onUnlock={() => setUnlocked(true)} />;
 
-  // ── Derived ─────────────────────────────────────────────────────────────
-  const active        = loans.filter(l => l.active);
-  const totalOut      = active.reduce((s,l) => s + Number(l.outstanding||0), 0);
-  const totalEMI      = active.reduce((s,l) => s + Number(l.emi||0), 0);
-  const totalOrig     = active.reduce((s,l) => s + Number(l.originalAmount||l.outstanding||0), 0);
-  const pctPaid       = totalOrig > 0 ? Math.min(100, Math.round((1 - totalOut/totalOrig)*100)) : 0;
-  const longestMo     = Math.max(...active.map(l => Number(l.monthsLeft)||0), 0);
-  const prioritised   = useMemo(() => prioritise(loans, strategy), [loans, strategy]);
-  const projData      = useMemo(() => payoffProjection(loans), [loans]);
-
   const openAdd  = () => { setForm(emptyL()); setEditId(null); setView("add"); };
-  const openEdit = l  => { setForm({ ...l, originalAmount:String(l.originalAmount||""), outstanding:String(l.outstanding||""), interestRate:String(l.interestRate||""), emi:String(l.emi||""), monthsLeft:String(l.monthsLeft||"") }); setEditId(l.id); setView("add"); };
+  const openEdit = l  => {
+    setForm({ ...l, originalAmount:String(l.originalAmount||""), outstanding:String(l.outstanding||""),
+      interestRate:String(l.interestRate||""), emi:String(l.emi||""), monthsLeft:String(l.monthsLeft||"") });
+    setEditId(l.id); setView("add");
+  };
 
   const handleSubmit = () => {
     if (!form.name.trim() || !form.outstanding) return;
-    const loan = { ...form, originalAmount:Number(form.originalAmount)||Number(form.outstanding), outstanding:Number(form.outstanding), interestRate:Number(form.interestRate)||0, emi:Number(form.emi)||0, monthsLeft:Number(form.monthsLeft)||0 };
+    const loan = { ...form,
+      originalAmount: Number(form.originalAmount)||Number(form.outstanding),
+      outstanding: Number(form.outstanding), interestRate: Number(form.interestRate)||0,
+      emi: Number(form.emi)||0, monthsLeft: Number(form.monthsLeft)||0 };
     if (editId) { setLoans(p => p.map(l => l.id===editId ? {...l,...loan} : l)); showToast("Updated ✓"); }
     else        { setLoans(p => [...p, loan]); showToast("Loan added ✓"); }
     setView("dashboard"); setEditId(null);
@@ -196,7 +189,7 @@ export default function App() {
 
   const exportCSV = () => {
     const h    = ["Name","Type","Original","Outstanding","Rate%","EMI","Months Left","Notes"];
-    const rows = loans.map(l => [l.name, l.type, l.originalAmount, l.outstanding, l.interestRate, l.emi, l.monthsLeft, `"${l.notes||""}"`]);
+    const rows = loans.map(l => [l.name,l.type,l.originalAmount,l.outstanding,l.interestRate,l.emi,l.monthsLeft,`"${l.notes||""}"`]);
     const blob = new Blob([[h,...rows].map(r=>r.join(",")).join("\n")], {type:"text/csv"});
     const a    = document.createElement("a"); a.href = URL.createObjectURL(blob);
     a.download = `loans-${new Date().toISOString().slice(0,10)}.csv`; a.click();
@@ -205,52 +198,47 @@ export default function App() {
 
   const handleLock = () => { setUnlocked(false); setLoans([]); setView("dashboard"); };
 
-  // ── Colours ─────────────────────────────────────────────────────────────
-  const C = { bg:"#f8f4ef", card:"#ffffff", border:"#e8e0d5", text:"#1a1410", muted:"#8c7b6b", accent:"#c8622a", accentL:"#fdf0e8", navy:"#1e2d4a" };
-
+  const C = { bg:"#f8f4ef", card:"#ffffff", border:"#e8e0d5", text:"#1a1410", muted:"#8c7b6b", accent:"#c8622a", navy:"#1e2d4a" };
   const S = {
-    root:    { background:C.bg, minHeight:"100vh", fontFamily:"'Crimson Pro', serif", color:C.text },
-    header:  { background:C.navy, padding:"0 28px", display:"flex", alignItems:"center", justifyContent:"space-between", height:58 },
-    logo:    { color:"#e8d5b7", fontFamily:"'Playfair Display', serif", fontSize:18, fontWeight:700, letterSpacing:"0.02em" },
-    logoSub: { color:"#7a8fa8", fontSize:10, fontFamily:"'DM Mono', monospace", letterSpacing:"0.15em", textTransform:"uppercase", marginTop:1 },
-    navBtn:  a => ({ background:a?"#ffffff18":"transparent", border:"none", color:a?"#e8d5b7":"#7a8fa8", padding:"6px 16px", borderRadius:4, cursor:"pointer", fontSize:12, fontFamily:"'DM Mono', monospace", letterSpacing:"0.08em", transition:"all 0.15s" }),
-    addBtn:  { background:C.accent, border:"none", color:"#fff", padding:"7px 18px", borderRadius:4, cursor:"pointer", fontSize:12, fontFamily:"'DM Mono', monospace", fontWeight:600, letterSpacing:"0.06em" },
-    outBtn:  { background:"transparent", border:"1px solid #7a8fa844", color:"#7a8fa8", padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:11, fontFamily:"'DM Mono', monospace", letterSpacing:"0.06em" },
-    body:    { padding:"28px", maxWidth:1080, margin:"0 auto" },
-    sg:      { display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 },
-    sc:      { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"18px 20px", boxShadow:"0 1px 3px #00000008" },
-    sn:      { fontFamily:"'Playfair Display', serif", fontSize:26, fontWeight:700, color:C.navy, lineHeight:1 },
-    sl:      { fontSize:10, color:C.muted, letterSpacing:"0.12em", textTransform:"uppercase", marginTop:6, fontFamily:"'DM Mono', monospace" },
-    panel:   { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"20px 22px", marginBottom:16, boxShadow:"0 1px 3px #00000008" },
-    pt:      { fontFamily:"'Playfair Display', serif", fontSize:14, color:C.navy, marginBottom:14, paddingBottom:10, borderBottom:`1px solid ${C.border}`, fontWeight:600 },
-    pill:    (a,c) => ({ background:a?c:"transparent", border:`1px solid ${a?c:C.border}`, color:a?"#fff":C.muted, padding:"5px 14px", borderRadius:20, cursor:"pointer", fontSize:11, fontFamily:"'DM Mono', monospace", letterSpacing:"0.06em", transition:"all 0.2s" }),
-    lc:      (color) => ({ background:C.card, border:`1px solid ${C.border}`, borderLeft:`4px solid ${color}`, borderRadius:8, padding:"16px 18px", marginBottom:10, boxShadow:"0 1px 3px #00000006" }),
-    ln:      { fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:600, color:C.navy },
-    lm:      { display:"flex", gap:10, flexWrap:"wrap", alignItems:"center", marginTop:5 },
-    tag:     c => ({ fontSize:10, color:c, background:c+"18", padding:"2px 8px", borderRadius:3, fontFamily:"'DM Mono', monospace", fontWeight:600, letterSpacing:"0.06em" }),
-    pb:      { height:6, background:"#f0ebe4", borderRadius:3, marginTop:12, overflow:"hidden" },
-    lbl:     { fontSize:11, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5, display:"block", fontFamily:"'DM Mono', monospace" },
-    inp:     { width:"100%", background:"#faf8f5", border:`1px solid ${C.border}`, borderRadius:6, color:C.text, padding:"9px 12px", fontSize:14, fontFamily:"'Crimson Pro', serif", outline:"none", boxSizing:"border-box" },
-    sel:     { width:"100%", background:"#faf8f5", border:`1px solid ${C.border}`, borderRadius:6, color:C.text, padding:"9px 12px", fontSize:14, fontFamily:"'Crimson Pro', serif", outline:"none", appearance:"none", boxSizing:"border-box" },
-    fg:      { display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 },
-    subBtn:  { background:C.navy, border:"none", color:"#e8d5b7", padding:"11px 26px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace", fontWeight:600, letterSpacing:"0.06em" },
-    canBtn:  { background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"10px 22px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace" },
-    ab:      c => ({ background:"transparent", border:`1px solid ${c}44`, color:c, padding:"4px 10px", borderRadius:4, cursor:"pointer", fontSize:10, fontFamily:"'DM Mono', monospace", letterSpacing:"0.05em" }),
-    empty:   { textAlign:"center", padding:"60px 20px", color:C.muted },
-    toast:   { position:"fixed", bottom:24, right:24, background:C.navy, color:"#e8d5b7", padding:"11px 22px", borderRadius:6, fontSize:12, fontFamily:"'DM Mono', monospace", zIndex:999, boxShadow:"0 4px 20px #00000030", animation:"slideUp 0.25s ease" },
+    root:   { background:C.bg, minHeight:"100vh", fontFamily:"'Crimson Pro', serif", color:C.text },
+    header: { background:C.navy, padding:"0 28px", display:"flex", alignItems:"center", justifyContent:"space-between", height:58 },
+    logo:   { color:"#e8d5b7", fontFamily:"'Playfair Display', serif", fontSize:18, fontWeight:700 },
+    logoSub:{ color:"#7a8fa8", fontSize:10, fontFamily:"'DM Mono', monospace", letterSpacing:"0.15em", textTransform:"uppercase", marginTop:1 },
+    navBtn: a => ({ background:a?"#ffffff18":"transparent", border:"none", color:a?"#e8d5b7":"#7a8fa8", padding:"6px 16px", borderRadius:4, cursor:"pointer", fontSize:12, fontFamily:"'DM Mono', monospace", letterSpacing:"0.08em" }),
+    addBtn: { background:C.accent, border:"none", color:"#fff", padding:"7px 18px", borderRadius:4, cursor:"pointer", fontSize:12, fontFamily:"'DM Mono', monospace", fontWeight:600 },
+    outBtn: { background:"transparent", border:"1px solid #7a8fa844", color:"#7a8fa8", padding:"6px 14px", borderRadius:4, cursor:"pointer", fontSize:11, fontFamily:"'DM Mono', monospace" },
+    body:   { padding:28, maxWidth:1080, margin:"0 auto" },
+    sg:     { display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:24 },
+    sc:     { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"18px 20px", boxShadow:"0 1px 3px #00000008" },
+    sn:     { fontFamily:"'Playfair Display', serif", fontSize:26, fontWeight:700, lineHeight:1 },
+    sl:     { fontSize:10, color:C.muted, letterSpacing:"0.12em", textTransform:"uppercase", marginTop:6, fontFamily:"'DM Mono', monospace" },
+    panel:  { background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"20px 22px", marginBottom:16, boxShadow:"0 1px 3px #00000008" },
+    pt:     { fontFamily:"'Playfair Display', serif", fontSize:14, color:C.navy, marginBottom:14, paddingBottom:10, borderBottom:`1px solid ${C.border}`, fontWeight:600 },
+    pill:   (a,c) => ({ background:a?c:"transparent", border:`1px solid ${a?c:C.border}`, color:a?"#fff":C.muted, padding:"5px 14px", borderRadius:20, cursor:"pointer", fontSize:11, fontFamily:"'DM Mono', monospace" }),
+    lc:     color => ({ background:C.card, border:`1px solid ${C.border}`, borderLeft:`4px solid ${color}`, borderRadius:8, padding:"16px 18px", marginBottom:10 }),
+    ln:     { fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:600, color:C.navy },
+    lm:     { display:"flex", gap:10, flexWrap:"wrap", alignItems:"center", marginTop:5 },
+    tag:    c => ({ fontSize:10, color:c, background:c+"18", padding:"2px 8px", borderRadius:3, fontFamily:"'DM Mono', monospace", fontWeight:600 }),
+    pb:     { height:6, background:"#f0ebe4", borderRadius:3, marginTop:12, overflow:"hidden" },
+    lbl:    { fontSize:11, color:C.muted, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:5, display:"block", fontFamily:"'DM Mono', monospace" },
+    inp:    { width:"100%", background:"#faf8f5", border:`1px solid ${C.border}`, borderRadius:6, color:C.text, padding:"9px 12px", fontSize:14, fontFamily:"'Crimson Pro', serif", outline:"none", boxSizing:"border-box" },
+    sel:    { width:"100%", background:"#faf8f5", border:`1px solid ${C.border}`, borderRadius:6, color:C.text, padding:"9px 12px", fontSize:14, fontFamily:"'Crimson Pro', serif", outline:"none", appearance:"none", boxSizing:"border-box" },
+    fg:     { display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 },
+    subBtn: { background:C.navy, border:"none", color:"#e8d5b7", padding:"11px 26px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace", fontWeight:600 },
+    canBtn: { background:"transparent", border:`1px solid ${C.border}`, color:C.muted, padding:"10px 22px", borderRadius:6, cursor:"pointer", fontSize:13, fontFamily:"'DM Mono', monospace" },
+    ab:     c => ({ background:"transparent", border:`1px solid ${c}44`, color:c, padding:"4px 10px", borderRadius:4, cursor:"pointer", fontSize:10, fontFamily:"'DM Mono', monospace" }),
+    empty:  { textAlign:"center", padding:"60px 20px", color:C.muted },
+    toast:  { position:"fixed", bottom:24, right:24, background:C.navy, color:"#e8d5b7", padding:"11px 22px", borderRadius:6, fontSize:12, fontFamily:"'DM Mono', monospace", zIndex:999, boxShadow:"0 4px 20px #00000030", animation:"slideUp 0.25s ease" },
   };
 
   return (
     <div style={S.root}>
       <style>{`
-        @keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes fadeIn  { from{opacity:0;transform:translateY(6px)}  to{opacity:1;transform:translateY(0)} }
-        button:hover { opacity:0.88; }
-        input:focus, select:focus { border-color:#c8622a !important; outline:none; }
-        * { box-sizing:border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Crimson+Pro:wght@400;500;600&family=DM+Mono:wght@400;500;600&display=swap');
+        *{box-sizing:border-box} button:hover{opacity:0.88} input:focus,select:focus{border-color:#c8622a!important;outline:none}
+        @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
 
-      {/* Header */}
       <div style={S.header}>
         <div>
           <div style={S.logo}>DebtView</div>
@@ -259,7 +247,7 @@ export default function App() {
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <nav style={{ display:"flex", gap:4 }}>
             <button style={S.navBtn(view==="dashboard")} onClick={() => setView("dashboard")}>Dashboard</button>
-            <button style={S.navBtn(view==="loans")}     onClick={() => setView("loans")}>My Loans ({active.length})</button>
+            <button style={S.navBtn(view==="loans")} onClick={() => setView("loans")}>My Loans ({active.length})</button>
           </nav>
           <button style={S.outBtn} onClick={exportCSV}>↓ CSV</button>
           <button style={S.outBtn} onClick={handleLock}>🔒 Lock</button>
@@ -269,24 +257,23 @@ export default function App() {
 
       <div style={S.body}>
 
-        {/* ── DASHBOARD ── */}
         {view === "dashboard" && (
           <>
             {loans.length === 0 ? (
               <div style={S.empty}>
                 <div style={{ fontSize:48, marginBottom:16 }}>⌂</div>
                 <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, color:C.navy, marginBottom:8 }}>No loans tracked yet</div>
-                <div style={{ fontSize:14, marginBottom:24 }}>Add your loans once — come back anytime to check your progress.</div>
+                <div style={{ fontSize:14, marginBottom:24 }}>Add your loans once — come back anytime to check progress.</div>
                 <button style={S.addBtn} onClick={openAdd}>+ Add your first loan</button>
               </div>
             ) : (
               <>
                 <div style={S.sg}>
                   {[
-                    { label:"Total Outstanding", value:fmtK(totalOut),      sub:`${active.length} active loans`,    color:"#dc2626" },
-                    { label:"Monthly Outgo",     value:fmtK(totalEMI),      sub:"combined EMIs",                    color:C.accent  },
-                    { label:"Overall Paid Off",  value:`${pctPaid}%`,        sub:"across all loans",                 color:"#16a34a" },
-                    { label:"Debt-Free In",      value:moStr(longestMo),     sub:"longest loan remaining",           color:C.navy    },
+                    { label:"Total Outstanding", value:fmtK(totalOut),   sub:`${active.length} active loans`, color:"#dc2626" },
+                    { label:"Monthly Outgo",     value:fmtK(totalEMI),   sub:"combined EMIs",                 color:C.accent  },
+                    { label:"Overall Paid Off",  value:`${pctPaid}%`,    sub:"across all loans",              color:"#16a34a" },
+                    { label:"Debt-Free In",      value:moStr(longestMo), sub:"longest loan",                  color:C.navy    },
                   ].map(({ label, value, sub, color }) => (
                     <div key={label} style={S.sc}>
                       <div style={{ ...S.sn, color }}>{value}</div>
@@ -296,7 +283,6 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Priority */}
                 <div style={S.panel}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, paddingBottom:10, borderBottom:`1px solid ${C.border}` }}>
                     <div style={{ fontFamily:"'Playfair Display', serif", fontSize:14, color:C.navy, fontWeight:600 }}>🎯 Repayment Priority</div>
@@ -321,15 +307,15 @@ export default function App() {
                           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
                             <span style={{ fontFamily:"'Crimson Pro', serif", fontSize:14, fontWeight:600, color:C.navy }}>
                               {TYPE_ICON[loan.type]} {loan.name}
-                              {idx===0 && <span style={{ fontSize:10, color:C.accent, fontFamily:"'DM Mono', monospace", marginLeft:8, fontWeight:600 }}>← FOCUS HERE</span>}
+                              {idx===0 && <span style={{ fontSize:10, color:C.accent, fontFamily:"'DM Mono', monospace", marginLeft:8 }}>← FOCUS HERE</span>}
                             </span>
-                            <span style={{ fontFamily:"'DM Mono', monospace", fontSize:12, color:C.text, fontWeight:600 }}>{fmt(loan.outstanding)}</span>
+                            <span style={{ fontFamily:"'DM Mono', monospace", fontSize:12, fontWeight:600 }}>{fmt(loan.outstanding)}</span>
                           </div>
                           <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                             <div style={{ flex:1, height:5, background:"#f0ebe4", borderRadius:3, overflow:"hidden" }}>
                               <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:3 }}/>
                             </div>
-                            <span style={{ fontSize:10, color:C.muted, fontFamily:"'DM Mono', monospace", minWidth:32 }}>{pct}%</span>
+                            <span style={{ fontSize:10, color:C.muted, fontFamily:"'DM Mono', monospace" }}>{pct}%</span>
                             {loan.interestRate > 0 && <span style={S.tag(color)}>{loan.interestRate}% p.a.</span>}
                             <span style={S.tag("#94a3b8")}>{moStr(loan.monthsLeft)}</span>
                             {loan.emi > 0 && <span style={{ fontSize:10, color:C.muted, fontFamily:"'DM Mono', monospace" }}>EMI {fmtK(loan.emi)}/mo</span>}
@@ -340,7 +326,6 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Chart */}
                 <div style={S.panel}>
                   <div style={S.pt}>📉 Outstanding Balance Projection</div>
                   <ResponsiveContainer width="100%" height={200}>
@@ -354,7 +339,7 @@ export default function App() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0ebe4"/>
                       <XAxis dataKey="label" tick={{ fill:"#8c7b6b", fontSize:10, fontFamily:"'DM Mono', monospace" }} axisLine={false} tickLine={false}/>
                       <YAxis tickFormatter={v => fmtK(v)} tick={{ fill:"#8c7b6b", fontSize:10, fontFamily:"'DM Mono', monospace" }} axisLine={false} tickLine={false}/>
-                      <Tooltip formatter={v => [fmt(v),"Outstanding"]} contentStyle={{ background:"#fff", border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, fontFamily:"'DM Mono', monospace" }}/>
+                      <Tooltip formatter={v => [fmt(v),"Outstanding"]} contentStyle={{ background:"#fff", border:`1px solid ${C.border}`, borderRadius:6, fontSize:12 }}/>
                       <Area type="monotone" dataKey="total" stroke="#1e2d4a" fill="url(#dg)" strokeWidth={2}/>
                     </AreaChart>
                   </ResponsiveContainer>
@@ -364,7 +349,6 @@ export default function App() {
           </>
         )}
 
-        {/* ── MY LOANS ── */}
         {view === "loans" && (
           <>
             {loans.length === 0
@@ -372,11 +356,10 @@ export default function App() {
               : loans.map(loan => {
                 const color = TYPE_COLOR[loan.type];
                 const pct   = loan.originalAmount > 0 ? Math.min(100, Math.round((1 - loan.outstanding/loan.originalAmount)*100)) : 0;
-                const isExp = expandId === loan.id;
                 return (
                   <div key={loan.id} style={{ ...S.lc(color), opacity:loan.active?1:0.6 }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                      <div style={{ flex:1, cursor:"pointer" }} onClick={() => setExpandId(isExp?null:loan.id)}>
+                      <div style={{ flex:1, cursor:"pointer" }} onClick={() => setExpandId(expandId===loan.id?null:loan.id)}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                           <span style={{ fontSize:18 }}>{TYPE_ICON[loan.type]}</span>
                           <span style={S.ln}>{loan.name}</span>
@@ -393,7 +376,7 @@ export default function App() {
                         <div style={{ fontSize:10, color:C.muted, fontFamily:"'DM Mono', monospace", marginTop:5 }}>
                           {pct}% paid · {fmt(loan.originalAmount - loan.outstanding)} cleared of {fmt(loan.originalAmount)}
                         </div>
-                        {isExp && loan.notes && <div style={{ marginTop:10, fontSize:13, color:C.muted, fontStyle:"italic", lineHeight:1.6 }}>{loan.notes}</div>}
+                        {expandId===loan.id && loan.notes && <div style={{ marginTop:10, fontSize:13, color:C.muted, fontStyle:"italic", lineHeight:1.6 }}>{loan.notes}</div>}
                       </div>
                       <div style={{ display:"flex", gap:6, marginLeft:12, flexShrink:0, marginTop:2 }}>
                         {loan.active && <button style={S.ab("#16a34a")} onClick={() => markPaid(loan.id)}>✓ Cleared</button>}
@@ -408,7 +391,6 @@ export default function App() {
           </>
         )}
 
-        {/* ── ADD / EDIT ── */}
         {view === "add" && (
           <div style={S.panel}>
             <div style={S.pt}>{editId ? "Edit Loan" : "Add a Loan"}</div>
